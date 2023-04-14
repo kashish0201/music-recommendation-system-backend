@@ -19,14 +19,17 @@ class getSongByGenre(generics.GenericAPIView):
 
     def get(self, request, music_genre):
         try:
+            print(music_genre.capitalize())
             songs = Song.objects.filter(genre = music_genre.capitalize())
             
             data = []
             for song in songs:
+                isLiked = len(Liked_song.objects.filter(user = request.user, song = song)) > 0
                 data.append({
                     "name": song.name,
                     "url": song.audio_file,
-                    "id": song.id
+                    "id": song.id,
+                    "isLiked": isLiked
                 })
 
             return Response({
@@ -55,6 +58,18 @@ class LikeSong(generics.GenericAPIView):
         try:
             song = Song.objects.get(id = request.data['song'])
             user = request.user
+
+            try:
+                liked_song = Liked_song.objects.get(song = song, user = user)
+            except:
+                liked_song = None
+
+            if liked_song:
+                liked_song.delete()
+                return Response({
+                    "message" : "Song unliked",
+                }, status = status.HTTP_200_OK)
+
             Liked_song.objects.create(song = song, user = user)
             return Response({
                 "message" : "Song liked",
@@ -70,15 +85,15 @@ class LikeSong(generics.GenericAPIView):
             user = request.user
             liked_songs_queryset = Liked_song.objects.filter(user = user)
             liked_songs = [q for q in liked_songs_queryset]
-            
+                        
             data = []
 
             for song in liked_songs:
-                current_song = Song.objects.get(id = song.id)
                 data.append({
-                    "name": current_song.name,
-                    "url": current_song.audio_file,
-                    "id": current_song.id
+                    "name": song.song.name,
+                    "url": song.song.audio_file,
+                    "id": song.song.id,
+                    "isLiked": True
                 })
 
             return Response({
