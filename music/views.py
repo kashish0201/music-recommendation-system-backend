@@ -4,14 +4,9 @@ from .serializers import SongSerializer, LikedSongSerializer
 from .models import Song, Liked_song
 from django.db.models import Q 
 from rest_framework.response import Response
+import pandas as pd
 
-# import os
-# from google.oauth2 import service_account
-# from googleapiclient.discovery import build
-
-# creds = service_account.Credentials.from_service_account_file(
-#     'C:\\Users\\DELL\\Desktop\\be project\\auth\\music\\fifth-curve-382316-7b08a22495ae.json', scopes=['https://www.googleapis.com/auth/drive']
-# )
+data = pd.read_csv('similarity.csv', index_col='filename')
 
 class getSongByGenre(generics.GenericAPIView):
     permission_classes = (permissions.IsAuthenticated, )
@@ -41,14 +36,6 @@ class getSongByGenre(generics.GenericAPIView):
                 "error": str(e)
             }, status = status.HTTP_404_NOT_FOUND)
     
-
-class getSongBySearch(generics.GenericAPIView):
-    permission_classes = (permissions.IsAuthenticated)
-    serializer_class = SongSerializer
-
-    def get(self, request, search_query):
-        songs = Song.objects.filter(Q(name__icontains= search_query))
-        return songs
     
 class LikeSong(generics.GenericAPIView):
     permission_classes = (permissions.IsAuthenticated,)
@@ -123,6 +110,72 @@ class getAllGenre(generics.GenericAPIView):
                 "exception": str(e)
             }, status = status.HTTP_401_UNAUTHORIZED)
 
+
+class SearchSongs(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = SongSerializer
+
+    def get(self, request, search_query):
+        try:
+            songs = Song.objects.filter(Q(name__icontains = search_query))
+            data = []
+            for song in songs:
+                isLiked = len(Liked_song.objects.filter(user = request.user, song = song)) > 0
+                data.append({
+                    "name": song.name,
+                    "url": song.audio_file,
+                    "id": song.id,
+                    "isLiked": isLiked
+                })
+
+            return Response({
+                "songs": data
+            }, status = status.HTTP_200_OK)
+        except Exception as e:
+            return Response ({
+                "message": "Failed to fetch songs for " + search_query,
+                "error": str(e)
+            }, status = status.HTTP_404_NOT_FOUND)
+
+
+class GetSimilarSongs(generics.GenericAPIView):
+    permission_classes = (permissions.IsAuthenticated,)
+    serializer_class = SongSerializer
+    
+    def post(self, request):
+        try:
+            song = Song.objects.get(id = request.data['song'])
+            song_name = song.name
+        
+            series = data[song_name].sort_values(ascending = False)
+            series = series.drop(song_name)
+            best_matches = series.head(5)
+            
+            similar_songs = []
+            for index, value in best_matches.items():
+                similar_songs.append(index)
+                
+            songs = Song.objects.filter(name__in = similar_songs)
+            song_data = []
+            
+            for song in songs:
+                isLiked = len(Liked_song.objects.filter(user = request.user, song = song)) > 0
+                song_data.append({
+                    "name": song.name,
+                    "url": song.audio_file,
+                    "id": song.id,
+                    "isLiked": isLiked
+                })
+            
+            return Response({
+                'data': song_data,
+                'message': 'Similar songs fetched successfully'
+            }, status = status.HTTP_200_OK)
+        except Exception as e:
+            print(e)
+            return Response({
+                'message': 'Failed to fetch similar songs',
+            }, status = status.HTTP_400_BAD_REQUEST)
 
 
 # class UploadFiles(generics.GenericAPIView):
